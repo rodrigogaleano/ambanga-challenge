@@ -193,7 +193,32 @@ Two variants of the same problem:
 
 ### 1.3 - OrganisationService
 
-<!-- Identify the design problem, explain the impact, and describe the refactor -->
+**What is the problem**
+
+The service, which should only access data, owns the screen state. It calls the API and then writes the result into `OrganisationsCubit` with `setAll`, `addOne` and `removeById`. The Cubit, which should hold the screen logic, is only a passive box of setters. This is also a boundary break (see 1.4).
+
+**Why it is a problem**
+
+1. **The service and the Cubit have the same lifecycle.** The service only works if it writes into the same Cubit instance that the screen is showing. In practice, the Cubit becomes a global singleton that lives for the whole life of the app.
+   - Nothing clears it on logout, so the next user can see the organisations of the previous user (see 3.4).
+   - All screens share the same screen state, not only the same data. If one screen needs a filtered list, it has to change the list that the other screens are showing.
+2. **Hidden side effects.** Every new operation (update, pagination, get by id) must remember to update the Cubit. If someone forgets, the screen shows old data. Any other source of changes, like push notifications (3.7) or offline sync (3.3), must also go through the service or change the Cubit directly.
+3. **The service needs a Cubit to work.** A push handler or a background sync that only wants to load organisations cannot use the service without a Cubit, which is UI state. The service also returns the same data that it writes into the Cubit, so the caller and the screen can end up with two different versions of the list.
+4. **The state cannot describe the screen.** `List<Organisation>` has no loading or error state (the same problem as item 7 in 1.1). Every caller has to handle loading and errors by itself, and an empty list can mean "no organisations" or "not loaded yet".
+5. **Testing and packaging.** To test data access, I need a Cubit. Testing the Cubit tests nothing, because it only has setters. And because the service depends on a `Cubit` class, the Data layer depends on `flutter_bloc`, so it cannot move to a pure Dart package later (the next step I mention in 0.3).
+
+**Refactor**
+
+The code already shares one list between the service and the screens. The refactor keeps this shared list, but moves it from the UI to the Data layer, where it belongs.
+
+1. `OrganisationService` becomes `OrganisationRepository`, an interface with a remote implementation (the names in 0.4). It does not know any Cubit and does not depend on `flutter_bloc`.
+2. The repository is the source of truth. It keeps the list in memory and exposes it as a `Stream<List<Organisation>>`, and new listeners receive the current list immediately. Loading, `createOrganisation` and `deleteOrganisation` call the API, update the list, and the stream emits the new value. Any new source of changes (push, sync) only needs to update the repository, and every screen sees it.
+3. `OrganisationsCubit` receives the repository through its constructor and listens to the stream. It has its own sealed states (`Loading`, `Loaded`, `Error`) and its own screen logic (for example, a filter), handles errors from the actions, and cancels the subscription in `close()`.
+4. In DI, the repository is a singleton that belongs to the user session, so the `LogoutUseCase` from 0.1 clears it. The Cubit is a factory, with one instance per screen.
+
+The cost is that the repository now has state and a lifecycle: it must be cleared on logout and close its stream. I think this is worth it, because the data is shared by several screens, and it prepares the app for the offline-first list (3.7) and the pending operations queue (3.3).
+
+The team can do this refactor in small steps without stopping other work: first the repository exposes the stream and the Cubit listens to it, then the service stops writing to the Cubit, and finally the service is renamed.
 
 ### 1.4 - Architecture Boundary Breaks
 
