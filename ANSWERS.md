@@ -436,9 +436,21 @@ Put everything that belongs to the user in a session scope that is removed at lo
 
 ### 3.5 - SOLID principles in practice
 
-<!-- Principle 1: name, file, violation, consequence, refactor -->
+**Single Responsibility Principle**
 
-<!-- Principle 2: name, file, violation, consequence, refactor -->
+- *Where:* `organisation_service.dart`, class `OrganisationService`.
+- *The violation:* the class has two reasons to change. It changes when the API contract changes, and it changes when the rules of the screen state change, because it also calls `setAll`, `addOne` and `removeById` on `OrganisationsCubit`.
+- *Consequence in a growing team:* two teams edit the same class, the one working on data and the one working on the screen, so they conflict and have to review each other's changes. Testing data access needs a Cubit. And when a new screen needs a different state rule, someone has to change data code that other screens already use.
+- *Refactor:* an `OrganisationRepository` that only handles data, and an `OrganisationsCubit` that owns the state and listens to it (see 1.3).
+
+**Dependency Inversion Principle**
+
+- *Where:* `http_error_interceptor.dart`, the block that registers the interceptors in `RemoteApiClient`.
+- *The violation:* the network layer depends on concrete classes from another layer, `AuthService` and `AppRouter`, and it takes them from the global locator inside the callback. There is no abstraction between them, and the dependency does not even appear in a constructor.
+- *Consequence in a growing team:* I cannot test the HTTP client without setting up a router and a locator. Renaming a route can break network code that belongs to another team. And the client cannot run where there is no router, for example in a push notification handler or a background sync.
+- *Refactor:* the interceptor receives a session abstraction (`SessionRepository`) through its constructor and only reports that the session expired. The UI listens to it and navigates (see 1.2 and 1.4). The same idea applies to `OrganisationService`, which depends on the concrete `OrganisationsCubit` instead of an abstraction.
+
+Both problems show the same symptom in practice: to test one piece, I have to build pieces from another layer.
 
 ### 3.6 - Dependency direction in this project
 
