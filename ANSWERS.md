@@ -249,9 +249,49 @@ I also checked this file, and I do not see a boundary break. `UserListCubit` (UI
 
 ### 2.1 - Locator registration snippet
 
+The locator is real code in the demo app: `part2_implementation/demo/di/`. It follows the DI modules from 0.4: `locator.dart` only puts the modules together, and each area has its own module.
+
 ```dart
-// Paste here the snippet you would add to locator.dart
+// demo/di/locator.dart
+final GetIt locator = GetIt.instance;
+
+void setupLocator() {
+  locator.registerSingleton<AppLifecycleObserver>(AppLifecycleObserver());
+  registerNotificationsModule(locator);
+}
+
+// demo/di/notifications_module.dart
+void registerNotificationsModule(GetIt locator) {
+  locator
+    ..registerLazySingleton<FakeNotificationsApi>(FakeNotificationsApi.new)
+    ..registerLazySingleton<NotificationsApi>(
+      () => locator<FakeNotificationsApi>(),
+    )
+    ..registerFactory<NotificationsCubit>(
+      () => NotificationsCubit(
+        locator<NotificationsApi>(),
+        lifecycle: locator<AppLifecycleObserver>().changes,
+        pollInterval: const Duration(seconds: 5),
+      ),
+    );
+}
+
+// demo/main.dart, where the page is built
+BlocProvider(
+  create: (_) => locator<NotificationsCubit>()..start(),
+  child: const NotificationsPage(),
+)
 ```
+
+In production, only the API registration changes: `NotificationsApi` would be `NotificationsApiImpl(locator<RemoteApiClient>())`, with the client registered in a network module, and the Cubit would use the default 30 second interval. The fake is also registered by its own type only because the demo button needs to turn the failure on and off.
+
+- `NotificationsApi` is a lazy singleton: it keeps no state, so one instance is enough for the whole app, and it is only created when something needs it.
+- `NotificationsCubit` is a factory: each screen gets a new Cubit, and the `BlocProvider` closes it when the screen goes away. The polling timer stops with the screen, and no state survives for the next user (see 3.4). This is the opposite of the singleton Cubit in 1.3.
+- `AppLifecycleObserver` is an app-wide singleton (in `ui/core/`, see 0.4). It wraps `AppLifecycleListener` and exposes the app state as a `Stream<AppLifecycleState>`.
+- The Cubit receives the `NotificationsApi` interface. Only the DI module knows the implementation (see 0.2 and 3.6).
+- GetIt is only used in the DI files and in `demo/main.dart`, as I wrote in 0.1. The Cubit and the page never call it. `test/demo/locator_test.dart` checks the registration types.
+
+To run the demo: `fvm flutter run -t demo/main.dart` from `part2_implementation/`.
 
 ---
 
