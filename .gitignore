@@ -9,3 +9,6 @@
 .flutter-plugins-dependencies
 build/
 coverage/
+
+# FVM Version Cache
+.fvm/

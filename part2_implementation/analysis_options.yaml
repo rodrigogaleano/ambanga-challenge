@@ -1,0 +1,10 @@
+include: package:very_good_analysis/analysis_options.yaml
+
+analyzer:
+  exclude:
+    # Generated build output.
+    - build/**
+    # Provided by the assessment and marked "do not modify".
+    - notifications/notification.dart
+    - notifications/notifications_api.dart
+    - rate_limit/interceptor_contract.dart
