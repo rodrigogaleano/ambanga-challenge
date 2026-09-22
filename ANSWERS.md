@@ -325,6 +325,25 @@ If I could change the contract, the response would carry its request (like `Base
 
 ### 3.1 - Cubit vs BLoC vs Riverpod
 
+**Advantages of Cubit in this project**
+
+- Simple API: `NotificationsCubit` exposes plain methods (`start`, `retry`, `markAsRead`). There are no event classes to create, so a screen needs less code.
+- Easy to test: the 16 Cubit tests call methods and check the emitted states, with `fakeAsync` and mocktail. Ten minutes of polling run in milliseconds.
+- It fits the stack: `flutter_bloc` is already in the project, and the same package supports `Bloc` when a feature needs it.
+
+**Disadvantages**
+
+- Concurrent inputs must be handled by hand. In 1.1, the search in `UserListCubit` needs manual cancellation and a debounce timer. In my `NotificationsCubit`, I needed a generation counter to ignore old polling cycles after a pause. These are the problems that event transformers solve in a `Bloc`.
+- There are no events, so there is no record of intent. A `BlocObserver` sees the new state, but not the user action that caused it. This makes debugging and analytics harder in complex screens.
+
+**Riverpod**
+
+It joins dependency injection and state, and it can dispose state automatically. But this project already uses GetIt and `flutter_bloc`. Moving to Riverpod would mean two ways to manage state for a long time, and I do not see a concrete problem in this codebase that only Riverpod solves.
+
+**When to move to BLoC, and when it is overkill**
+
+I would decide per feature, not for the whole app. A feature should move to `Bloc` when several inputs compete and the order matters: search while typing, filters, pagination. The `UserListCubit` search is a good example: a `restartable()` transformer on the search event gives "latest wins", and `droppable()` on the load event ignores a second `init` while the first one is running. For simple screens, like the notifications list, a `Bloc` would only add event classes without solving any problem. Cubit and Bloc can live together in the same app.
+
 ### 3.2 - Centralised locator
 
 ### 3.3 - Offline operations queue
