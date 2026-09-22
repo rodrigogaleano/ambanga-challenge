@@ -4,7 +4,7 @@ import 'package:flutter/material.dart' hide Notification;
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../notifications/notifications_cubit.dart';
-import '../notifications/notifications_view_model.dart';
+import '../notifications/notifications_page.dart';
 import 'fake_notifications_api.dart';
 
 void main() => runApp(const DemoApp());
@@ -47,18 +47,7 @@ class _DemoAppState extends State<DemoApp> {
           pollInterval: const Duration(seconds: 5),
         )..start(),
         child: Scaffold(
-          appBar: AppBar(title: const Text('Notifications')),
-          body: BlocBuilder<NotificationsCubit, NotificationsState>(
-            builder: (context, state) => Center(
-              child: Text(switch (state) {
-                NotificationsLoading() => 'Loading',
-                NotificationsLoaded(:final notifications) =>
-                  'Loaded: ${notifications.length}',
-                NotificationsError(:final notifications) =>
-                  'Error: ${notifications.length}',
-              }),
-            ),
-          ),
+          body: const NotificationsPage(),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _toggleFailure,
             icon: Icon(_api.isFailing ? Icons.wifi : Icons.wifi_off),
