@@ -372,6 +372,43 @@ Each feature becomes a package that exports its own module, and the app only com
 
 ### 3.3 - Offline operations queue
 
+**Where it lives**
+
+Everything stays in the Data layer. The page and the Cubit keep talking to the repository, exactly as in the refactor I describe in 1.3, and they never know that a queue exists. This is what allows the screens to stay the same when offline support arrives (see 3.7).
+
+**The pieces**
+
+- A **pending operations store**: the queue itself, saved in a local database so it survives closing the app.
+- A **sync service**: it reads the queue and sends the operations, one at a time.
+- The **repository**: it applies the change locally first, writes the operation into the queue, and emits the new value on its stream, so the screen updates immediately.
+
+**What one operation stores**
+
+A local id, the type (for example `markAsRead` or `updateOrganisation`), the payload, the creation date, the number of attempts, the status (`pending`, `sending`, `failed`), and an **idempotency key**. The key goes to the server, so if the same operation is sent twice, the server applies it only once. Without it, a resend can duplicate data.
+
+**When it syncs**
+
+When connectivity comes back, when the app returns to the foreground (the same `AppLifecycleObserver` that the demo already uses), and right after a new operation is saved if the device is online. Operations for the same entity are sent in order, so an edit is never applied before the creation of the same item.
+
+**When it fails**
+
+- Network errors: retry with exponential backoff, the same policy as the polling in `NotificationsCubit`.
+- 429: the rate limit interceptor from 2.2 already waits for `Retry-After` in the same stack.
+- Most 4xx answers mean the request itself is wrong, so repeating it will not help. The operation becomes `failed`, and the UI can show it and let the user discard it or try again.
+- After a few attempts, the operation also becomes `failed`, so the queue never grows forever.
+
+**Conflicts**
+
+The policy is declared per type of data. My default is that the server wins: the repository replaces the local value and tells the user if an edit was lost. For simple flags like "mark as read", last write wins is enough.
+
+**Session**
+
+The queue belongs to the user and is cleared on logout with the rest of the session scope (see 3.2 and 3.4). A pending operation from the previous user must never be sent with the new user's token.
+
+**Concrete example**
+
+Marking a notification as read without internet: the Cubit calls the repository, the item leaves the list immediately, and the operation waits in the queue. When the connection comes back, the sync service sends it with the idempotency key. Today, without a queue, my `markAsRead` in 2.1 just keeps the list unchanged and waits for the next polling cycle.
+
 ### 3.4 - Previous user data bug
 
 ### 3.5 - SOLID principles in practice
