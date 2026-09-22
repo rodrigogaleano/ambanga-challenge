@@ -287,7 +287,7 @@ In production, only the API registration changes: `NotificationsApi` would be `N
 
 - `NotificationsApi` is a lazy singleton: it keeps no state, so one instance is enough for the whole app, and it is only created when something needs it.
 - `NotificationsCubit` is a factory: each screen gets a new Cubit, and the `BlocProvider` closes it when the screen goes away. The polling timer stops with the screen, and no state survives for the next user (see 3.4). This is the opposite of the singleton Cubit in 1.3.
-- `AppLifecycleObserver` is an app-wide singleton (in `ui/core/`, see 0.4). It wraps `AppLifecycleListener` and exposes the app state as a `Stream<AppLifecycleState>`.
+- `AppLifecycleObserver` is an app-wide singleton. In the demo it is in `demo/app_lifecycle_observer.dart`, and in the structure from 0.4 it would live in `ui/core/`. It wraps `AppLifecycleListener` and exposes the app state as a `Stream<AppLifecycleState>`.
 - The Cubit receives the `NotificationsApi` interface. Only the DI module knows the implementation (see 0.2 and 3.6).
 - GetIt is only used in the DI files and in `demo/main.dart`, as I wrote in 0.1. The Cubit and the page never call it. `test/demo/locator_test.dart` checks the registration types.
 
@@ -328,7 +328,7 @@ If I could change the contract, the response would carry its request (like `Base
 **Advantages of Cubit in this project**
 
 - Simple API: `NotificationsCubit` exposes plain methods (`start`, `retry`, `markAsRead`). There are no event classes to create, so a screen needs less code.
-- Easy to test: the 16 Cubit tests call methods and check the emitted states, with `fakeAsync` and mocktail. Ten minutes of polling run in milliseconds.
+- Easy to test: the 17 Cubit tests call methods and check the emitted states, with `fakeAsync` and mocktail. Ten minutes of polling run in milliseconds.
 - It fits the stack: `flutter_bloc` is already in the project, and the same package supports `Bloc` when a feature needs it.
 
 **Disadvantages**
@@ -467,7 +467,7 @@ NotificationsPage → NotificationsCubit → NotificationsApi ← NotificationsA
 
 **What breaks if the Cubit imports `NotificationsApiImpl`**
 
-The UI layer starts to depend on HTTP, JSON parsing and interceptors, so a parsing problem becomes a problem of the Cubit. The 16 Cubit tests would need a real HTTP client or a fake server, instead of a mock with fake time. The demo could not replace the real API with the fake one, because the choice would be inside the Cubit and not in the DI module. And changing the HTTP library would mean changing UI code.
+The UI layer starts to depend on HTTP, JSON parsing and interceptors, so a parsing problem becomes a problem of the Cubit. The 17 Cubit tests would need a real HTTP client or a fake server, instead of a mock with fake time. The demo could not replace the real API with the fake one, because the choice would be inside the Cubit and not in the DI module. And changing the HTTP library would mean changing UI code.
 
 **How I keep the boundary**
 
@@ -478,9 +478,9 @@ The UI layer starts to depend on HTTP, JSON parsing and interceptors, so a parsi
 
 **Practical effect**
 
-Testability: the Cubit tests run in milliseconds with `MockNotificationsApi` and fake time, including ten minutes of polling. Without the interface, the same tests would need a server and would be slow and flaky.
+Testability: the Cubit tests run in milliseconds with a mock of `NotificationsApi` and fake time, including ten minutes of polling. Without the interface, the same tests would need a server and would be slow and flaky.
 
-Change cost: using the fake API in the demo was one line in the DI module. The Cubit and the page did not change at all.
+Change cost: using the fake API in the demo was one registration in the DI module. The Cubit and the page did not change at all.
 
 ### 3.7 - Architecture under growth
 
