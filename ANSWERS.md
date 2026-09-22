@@ -454,7 +454,33 @@ Both problems show the same symptom in practice: to test one piece, I have to bu
 
 ### 3.6 - Dependency direction in this project
 
-<!-- Describe expected dependency direction, a concrete break scenario, and how to enforce boundaries -->
+**Expected direction**
+
+```
+NotificationsPage → NotificationsCubit → NotificationsApi ← NotificationsApiImpl
+```
+
+- The page only reads the Cubit from the context with `BlocBuilder` and `context.read`. It does not create it.
+- The Cubit receives `NotificationsApi` in its constructor and never knows if the data comes from HTTP, from a cache or from a fake.
+- `NotificationsApiImpl` implements the interface, so its arrow points to the contract. The contract does not know the implementation.
+- Only the DI module knows the implementation. In this repository, `demo/di/notifications_module.dart` registers `FakeNotificationsApi` as `NotificationsApi`.
+
+**What breaks if the Cubit imports `NotificationsApiImpl`**
+
+The UI layer starts to depend on HTTP, JSON parsing and interceptors, so a parsing problem becomes a problem of the Cubit. The 16 Cubit tests would need a real HTTP client or a fake server, instead of a mock with fake time. The demo could not replace the real API with the fake one, because the choice would be inside the Cubit and not in the DI module. And changing the HTTP library would mean changing UI code.
+
+**How I keep the boundary**
+
+- The constructor always receives the interface, and no class in the UI imports a class whose name ends in `Impl` (the rule I wrote in 0.1).
+- Only the DI modules import implementations, and `test/demo/locator_test.dart` checks what each type resolves to.
+- In code review the rule is easy to check: look for `Impl` in the imports of the UI files.
+- When the team grows and each layer becomes a package (0.3), the UI package does not even declare the implementation package in its `pubspec.yaml`, so the compiler keeps the boundary.
+
+**Practical effect**
+
+Testability: the Cubit tests run in milliseconds with `MockNotificationsApi` and fake time, including ten minutes of polling. Without the interface, the same tests would need a server and would be slow and flaky.
+
+Change cost: using the fake API in the demo was one line in the DI module. The Cubit and the page did not change at all.
 
 ### 3.7 - Architecture under growth
 
