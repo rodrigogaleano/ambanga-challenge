@@ -9,20 +9,22 @@ import 'fake_notifications_api.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   setupLocator();
-  runApp(const DemoApp());
+  runApp(DemoApp(api: locator<FakeNotificationsApi>()));
 }
 
 class DemoApp extends StatefulWidget {
-  const DemoApp({super.key});
+  const DemoApp({required this.api, super.key});
+
+  final FakeNotificationsApi api;
 
   @override
   State<DemoApp> createState() => _DemoAppState();
 }
 
 class _DemoAppState extends State<DemoApp> {
-  final FakeNotificationsApi _api = locator<FakeNotificationsApi>();
-
-  void _toggleFailure() => setState(() => _api.isFailing = !_api.isFailing);
+  void _toggleFailure() {
+    setState(() => widget.api.isFailing = !widget.api.isFailing);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,8 +36,10 @@ class _DemoAppState extends State<DemoApp> {
           body: const NotificationsPage(),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _toggleFailure,
-            icon: Icon(_api.isFailing ? Icons.wifi : Icons.wifi_off),
-            label: Text(_api.isFailing ? 'Restore API' : 'Simulate failure'),
+            icon: Icon(widget.api.isFailing ? Icons.wifi : Icons.wifi_off),
+            label: Text(
+              widget.api.isFailing ? 'Restore API' : 'Simulate failure',
+            ),
           ),
         ),
       ),
