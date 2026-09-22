@@ -293,6 +293,32 @@ In production, only the API registration changes: `NotificationsApi` would be `N
 
 To run the demo: `fvm flutter run -t demo/main.dart` from `part2_implementation/`.
 
+### 2.2 - Rate limit interceptor notes
+
+`interceptResponse` only receives the `ResponseData`, not the request that produced it, and the contract cannot change. The simple solution is to keep the last request in a field, but with concurrent requests this resends the wrong request: request A goes out, request B goes out, A returns 429, and the interceptor resends B. It is the same kind of shared state problem as in 1.2.
+
+My solution is one interceptor instance per request. The instance keeps only the request of its own call, so the request it resends is always the right one. The client creates a new instance for each request:
+
+```dart
+RemoteApiClient(
+  interceptorFactories: [
+    () => HttpRateLimitInterceptor(executeRequest: rawClient.send),
+  ],
+)
+```
+
+If someone shares one instance between concurrent requests, `interceptRequest` throws a `StateError`. The wrong usage fails loudly instead of causing a silent bug. The instance can still be reused for a new request after the previous one ends.
+
+Rules for the retry:
+
+- The `Retry-After` header is read in any letter case, as seconds.
+- If the header is missing or invalid, the interceptor waits 1 second.
+- If the server asks for more than 60 seconds, the interceptor gives up right away, so a screen does not wait for minutes.
+- After 2 resends that still return 429, it throws `RateLimitExceededException`.
+- Resends use `executeRequest`, which sends the request without going through the interceptors again.
+
+If I could change the contract, the response would carry its request (like `BaseResponse.request` in `package:http`). Then one interceptor could be shared by all requests.
+
 ---
 
 ## Part 3 - Written Questions
