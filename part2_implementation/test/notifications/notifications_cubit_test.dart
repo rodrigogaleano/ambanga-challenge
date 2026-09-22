@@ -17,7 +17,7 @@ void main() {
     id: 1,
     title: 'First',
     body: 'First body',
-    createdAt: DateTime(2026),
+    createdAt: DateTime(2026, 1, 2),
     isRead: false,
   );
   final second = Notification(
@@ -104,6 +104,20 @@ void main() {
 
         time.elapse(const Duration(seconds: 1));
         verifyCalls(1);
+
+        closeCubit(cubit, time);
+      });
+    });
+
+    test('shows the most recent notifications first', () {
+      fakeAsync((time) {
+        when(() => api.getUnreadNotifications())
+            .thenAnswer((_) async => [second, first]);
+        final cubit = startCubit(time);
+
+        expect(states, [
+          NotificationsLoaded([first, second]),
+        ]);
 
         closeCubit(cubit, time);
       });

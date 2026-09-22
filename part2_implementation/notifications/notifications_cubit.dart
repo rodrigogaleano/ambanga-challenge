@@ -111,8 +111,9 @@ class NotificationsCubit extends Cubit<NotificationsState> {
       if (generation != _generation) return;
 
       _failedCycles = 0;
-      _notifications = notifications;
-      emit(NotificationsLoaded(notifications));
+      _notifications = [...notifications]
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      emit(NotificationsLoaded(_notifications));
       _scheduleNextCycle(generation);
       return;
     }
