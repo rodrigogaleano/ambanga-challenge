@@ -1,9 +1,34 @@
-// ignore_for_file: unused_import
+import 'package:equatable/equatable.dart';
+
 import 'notification.dart';
 
-// TODO: define the sealed state hierarchy for NotificationsCubit here
-//
-// Expected states:
-//   - initial loading
-//   - loaded (list of notifications)
-//   - error (after 3 consecutive poll failures)
+sealed class NotificationsState extends Equatable {
+  const NotificationsState();
+}
+
+final class NotificationsLoading extends NotificationsState {
+  const NotificationsLoading();
+
+  @override
+  List<Object?> get props => [];
+}
+
+final class NotificationsLoaded extends NotificationsState {
+  NotificationsLoaded(List<Notification> notifications)
+    : notifications = List.unmodifiable(notifications);
+
+  final List<Notification> notifications;
+
+  @override
+  List<Object?> get props => [notifications];
+}
+
+final class NotificationsError extends NotificationsState {
+  NotificationsError(List<Notification> notifications)
+    : notifications = List.unmodifiable(notifications);
+
+  final List<Notification> notifications;
+
+  @override
+  List<Object?> get props => [notifications];
+}

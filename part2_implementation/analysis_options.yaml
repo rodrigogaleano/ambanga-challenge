@@ -8,3 +8,9 @@ analyzer:
     - notifications/notification.dart
     - notifications/notifications_api.dart
     - rate_limit/interceptor_contract.dart
+
+linter:
+  rules:
+    # Suggests the `new()` constructor syntax from Dart 3.13. I keep the
+    # classic `ClassName()` form because every Flutter developer knows it.
+    unnecessary_type_name_in_constructor: false
