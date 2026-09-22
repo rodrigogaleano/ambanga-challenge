@@ -411,6 +411,29 @@ Marking a notification as read without internet: the Cubit calls the repository,
 
 ### 3.4 - Previous user data bug
 
+**Root cause hypothesis**
+
+This is not a bug of one screen, it's state that lives longer than the session. The word "briefly" is a good clue: the old data is already in memory when the new screen is built, and it is replaced as soon as the first response for the new user arrives.
+
+In this project I see three possible sources, from the most likely to the least:
+
+1. **Singletons that hold user data.** `OrganisationsCubit` has to be a singleton because `OrganisationService` writes into it (see 1.3). Nobody closes it at logout, so it still holds the list of user A. When user B opens the screen, `BlocBuilder` immediately rebuilds with that old state, until the new request finishes.
+2. **Work from the old session that is still running.** A polling loop or a scheduled retry that nobody stopped at logout. A late response then emits data from user A after user B has logged in. In my `NotificationsCubit` this is handled by `close()` and by the generation counter, which ignores a cycle that belongs to a previous run (2.1).
+3. **Requests in flight and caches.** A request sent with the token of user A that answers after the login of user B (the same timing problem as in 1.2), plus caches that are not cleared: an in memory cache in a repository, an HTTP cache, images or a local database.
+
+**How I would investigate**
+
+- **Reproduce it:** log in as A, open the screen, log out, log in as B and open the screen again. Repeat with a slow network, because the window is short and easier to see when responses are slow.
+- **Find the source:** which screen and which field show the old data? If it appears instantly, it is state in memory. If it appears after a moment, it is a late response or a cache.
+- **Add a `BlocObserver` with timestamps:** log `onChange` and `onClose` for every Cubit, then look for states emitted after the logout and for Cubits that never close.
+- **Look at the network log:** find requests that started before the logout and answered after it, and requests that still carry the old token.
+- **Review the DI registrations:** list everything registered as a singleton that holds user data, and check what should be a factory or belong to a session scope (see 3.2).
+- **Review the logout flow:** check what it clears today (token, repositories, local database, pending queue) and what it leaves behind.
+
+**How I would fix it**
+
+Put everything that belongs to the user in a session scope that is removed at logout (3.2), and make a `LogoutUseCase` the only way out, so clearing repositories, caches and the pending queue always happens together (0.1 and 3.3). Register Cubits as factories, so the `BlocProvider` closes them with the screen, like `NotificationsCubit` in 2.1. Ignore responses from an old session, using a session id as I describe in 1.2, and stop scheduled work in `close()`. Finally, add a regression test that logs in as A, logs out, logs in as B and checks that the first state is empty.
+
 ### 3.5 - SOLID principles in practice
 
 <!-- Principle 1: name, file, violation, consequence, refactor -->
