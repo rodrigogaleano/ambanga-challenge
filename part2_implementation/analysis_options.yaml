@@ -11,6 +11,7 @@ analyzer:
 
 linter:
   rules:
-    # Suggests the `new()` constructor syntax from Dart 3.13. I keep the
-    # classic `ClassName()` form because every Flutter developer knows it.
+    # These suggest new Dart 3.13 syntax (`new()` constructors and `;` class
+    # bodies). I keep the classic syntax because every Flutter developer knows it.
+    empty_container_bodies: false
     unnecessary_type_name_in_constructor: false
