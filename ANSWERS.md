@@ -141,7 +141,55 @@ Items 3, 5 and 6 have the same root cause: the input changes quickly, and only t
 
 ### 1.2 - HttpErrorInterceptor
 
-<!-- Describe the bug scenario, why it happens, and how you would fix it -->
+**Scenario**
+
+1. The user's token expires.
+2. The user opens the organisations list while the notifications polling from Part 2 is running. The screen and the polling send requests at the same time.
+3. All these requests return 401 at almost the same time.
+4. Each response goes through the interceptor separately, so `onError()` runs once for each request.
+5. The app calls `logout()` several times in parallel and `replace(LoginRoute())` several times. The old screen also receives the 401 responses and shows an error on top of all this.
+
+Two requests are enough to cause the bug. In a real app, parallel requests are normal: screens that load several endpoints, background polling, retries.
+
+**Why it happens**
+
+There are two causes:
+
+*Cause 1: an async callback hidden behind a sync type.* `onError` is a `void Function()`, but the 401 callback in the registration is `async`, so it returns a `Future<void>`. Dart accepts this without any warning, but `interceptResponse` calls `onError()` without `await`, so the `Future` is ignored (fire-and-forget).
+
+- The 401 response continues to the screen before the logout finishes, so the screen shows a generic error while the app is navigating to the login page.
+- If `logout()` throws an exception, nobody catches it, and `replace(LoginRoute())` never runs. The user stays on a screen with an invalid session.
+
+*Cause 2: the interceptor has no shared state.* It handles every response on its own, and nothing records that a logout is already in progress. Adding `await` alone would not fix this, because different requests go through the interceptor at the same time.
+
+- `logout()` runs several times in parallel: the local storage is cleared several times at once, and the app calls the logout endpoint once for each request. If the logout request itself returns 401 through the same client, it triggers the interceptor again and can create a loop.
+- `replace(LoginRoute())` runs several times: the login page is rebuilt several times, it flickers, and the user can lose what they started typing.
+- With 403, `push(ForbiddenRoute())` runs once for each request: several Forbidden pages are stacked, and the user has to press back several times.
+
+Two variants of the same problem:
+
+- If some requests return 401 and others return 403, the navigation order depends on network timing. Sometimes the Forbidden page appears on top of the login page. The behaviour is not predictable.
+- A request from user A can still be in progress when user A logs out and user B logs in on the same device (for example, a slow request or a polling retry that nobody stopped). When it returns 401, the interceptor logs out user B (see 3.4).
+
+**Fix**
+
+*Short term, inside the interceptor:*
+
+1. Change the callback type to `Future<void> Function()`, `await` it and wrap it in `try`/`catch`. Errors from `logout()` are no longer lost, and navigation happens only after the logout finishes.
+2. Add a single-flight guard: keep the `Future` of the logout in progress. The first 401 starts the logout, and the next ones wait for the same `Future` or are ignored. The guard is reset only when a new session starts, not when the logout finishes, so a late 401 cannot start everything again.
+3. Do not apply the interceptor to authentication endpoints (login, logout, refresh), to avoid the loop.
+4. Do not push `ForbiddenRoute` if it is already on top of the stack.
+5. Return a typed exception to the caller (for example, `SessionExpiredException`) instead of the raw 401 response, so screens can ignore it instead of showing a generic error.
+6. When the session expires, cancel the other requests that are still in progress, so their responses do not reach the screens.
+
+*Long term, in the design (this also fixes the boundary break in 1.4):*
+
+- The interceptor should not know `AuthService` or `AppRouter`. It receives a `SessionRepository` (Data layer) through its constructor and only tells it "I received a 401".
+- `SessionRepository` keeps a simple state (`authenticated` or `unauthenticated`) and exposes it as a `Stream`. The change is idempotent: the first 401 changes the state, and the next ones do nothing.
+- The UI (a listener at the root of the app, or a router guard) listens to this stream and navigates once. Clearing the user's data happens in a `LogoutUseCase`, the example I gave in 0.1.
+- A 403 usually means "no permission for this resource", so it is not a global problem. It should become a typed exception, and each feature decides what to do (show a message, hide a button). With global navigation, a secondary background request with 403 can take the user out of the screen they are using.
+- To ignore a late 401 from an old session, the app needs to know which session the request belonged to. This contract makes that hard, because `interceptResponse` only receives the `ResponseData` and not the original request. Part 2.2 has the same limitation: to resend the original request after a 429, the interceptor needs to know which request the response belongs to.
+- If the backend supports refresh tokens, the first 401 should try to refresh the token once (also single-flight) and repeat the failed requests. The app logs out only if the refresh fails.
 
 ### 1.3 - OrganisationService
 
