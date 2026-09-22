@@ -86,7 +86,58 @@ testing/                                    # mocks and test data shared by all 
 
 ### 1.1 - UserListCubit
 
-<!-- Describe the problems found, the impact of each, and how you would fix them -->
+I grouped the problems by severity. Items 1-4 are bugs that users will see in production. Items 5-7 are behaviour and performance problems. Items 8-9 are small quality problems.
+
+**Critical**
+
+1. **`init` ignores the result.**
+   - *What:* the `.then` callback receives `users`, but it emits `UserListLoaded([])`.
+   - *Impact:* the list is always empty. There is no error and no crash. The screen just looks like there are no users, so the bug can go to production without anyone noticing.
+   - *Fix:* emit the list that the service returns.
+
+2. **No error handling and no error state.**
+   - *What:* `getUsers().then(...)` has no `catchError`, `searchUsers(...).listen(...)` has no `onError`, and there is no error state.
+   - *Impact:* when the network fails, the error is not handled and goes to crash reporting. The screen stays in `UserListInitial` forever: the user sees a loading spinner that never stops and cannot try again.
+   - *Fix:* add a `UserListError` state, use `async`/`await` with `try`/`catch` in `init`, add `onError` to the subscription, and show a retry button in the UI.
+
+3. **Search subscriptions are never cancelled, so results can arrive in the wrong order.**
+   - *What:* every call to `onSearchChanged` creates a new subscription, and the old ones are never cancelled.
+   - *Impact:* typing "rodrigo" creates seven subscriptions that stay open. If `searchUsers` is a long-lived stream (a websocket or a Firestore query), they waste memory and network while the app is running. Even with short streams, the responses can arrive in any order: the results for "rod" can arrive after the results for "rodrigo" and replace them, so the list does not match the text in the search field.
+   - *Fix:* keep the current `StreamSubscription` in a field and cancel it before starting a new search, so only the latest search can emit.
+
+4. **Subscriptions keep running after the Cubit is closed.**
+   - *What:* `close()` is not overridden, so nothing cancels the subscriptions. Also, `init` and the search listener never check if the Cubit is still open.
+   - *Impact:* if the user leaves the screen before the response arrives, the late `emit` throws `StateError: Cannot emit new states after calling close`, and the subscriptions keep running.
+   - *Fix:* override `close()` to cancel the subscription, and check `isClosed` before calling `emit` after an `await`.
+
+**Behaviour and performance**
+
+5. **No debounce on search.**
+   - *What:* every key the user types sends a new request.
+   - *Impact:* more load on the backend, more battery usage, and many requests in a short time can trigger rate limiting (429, see Part 2.2).
+   - *Fix:* wait around 300 ms after the user stops typing (debounce), and do not search again for the same term.
+
+6. **`init` and search compete for the same state.**
+   - *What:* both flows emit states independently.
+   - *Impact:* if `getUsers` finishes after the user has started typing, it replaces the search results with the full list.
+   - *Fix:* handle loading and searching as one flow with the same cancellation logic. When a search starts, the result of a pending `init` is ignored. An empty search term shows the full list again.
+
+7. **The states cannot describe everything the screen needs.**
+   - *What:* `UserListInitial` means both "not started" and "loading", there is no loading state for search, and there is no error state.
+   - *Impact:* the UI cannot show a spinner during a search, cannot tell "still loading" from "no users", and cannot show an error.
+   - *Fix:* create explicit `Loading`, `Loaded` and `Error` states. An empty list in `Loaded` is the empty state, and the View decides how to show it.
+
+**Minor**
+
+8. **States have no value equality, and the list can be changed from outside.**
+   - *Impact:* when the Cubit emits a state equal to the current one, the screen rebuilds for no reason, and tests need custom matchers. Any code that holds the list can change the current state.
+   - *Fix:* add value equality (`Equatable`, or `==` and `hashCode`) and use an unmodifiable list.
+
+9. **`init` returns `void` and uses `.then`.**
+   - *Impact:* callers and tests cannot wait for it to finish, and calling it twice sends two requests.
+   - *Fix:* return `Future<void>` with `async`/`await`, and ignore new calls while a load is already running.
+
+Items 3, 5 and 6 have the same root cause: the input changes quickly, and only the latest input should win. With a Cubit, I have to do this by hand (cancel the subscription and use a debounce timer). With a `Bloc`, one event transformer on the search event does it, for example `restartable()` from `bloc_concurrency`, or a debounce followed by `switchMap`. See 3.1.
 
 ### 1.2 - HttpErrorInterceptor
 
