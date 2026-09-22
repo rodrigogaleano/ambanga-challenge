@@ -484,8 +484,25 @@ Change cost: using the fake API in the demo was one line in the DI module. The C
 
 ### 3.7 - Architecture under growth
 
-<!-- Firebase push notifications - layers touched: -->
+**Firebase push notifications**
 
-<!-- Offline-first organisation list - layers touched: -->
+- *Layers touched:* Data and DI. Firebase Cloud Messaging is one more external source, so it becomes a service like any other.
+- *What changes:* the same list now has two sources, polling and push, so this is the moment to create the `NotificationsRepository` that I mention in 0.1. It listens to both sources, keeps the list, and exposes it as a stream. The polling becomes a detail inside the repository. `NotificationsCubit` changes the type it receives in the constructor and listens to the repository stream.
+- *What does not change:* `NotificationsPage`, the states and the widget tests. The Cubit tests replace the API mock with a repository mock.
+- This change is one constructor line, not a rewrite, because the Cubit always depended on an abstraction (see 3.6).
 
-<!-- Global theme switcher - layers touched: -->
+**Offline-first organisation list**
+
+- *Layers touched:* only Data.
+- *What changes:* the `OrganisationRepository` from the refactor in 1.3 gets two sources, remote and local, plus the pending operations queue from 3.3. It is already the source of truth and already exposes a stream, so it decides what to show while offline.
+- *What does not change:* `OrganisationsCubit` and the screen, because they keep listening to the same stream. If the UI wants to show a "syncing" indicator, it is one more field in the state that already exists.
+- This is the payoff of the refactor in 1.3. With the current code, where the service writes into the Cubit, offline support would touch the Cubit and every screen that uses organisations.
+
+**Global theme switcher**
+
+- *Layers touched:* UI and Data, plus DI.
+- *What changes:* a `ThemeCubit` at the root of the app gives the theme to `MaterialApp`, and a small settings service saves the choice in local storage, so the app opens with the same theme.
+- *What does not change:* no existing feature. Notifications and organisations only read `Theme.of(context)`, so they follow the new theme without any change.
+- One detail to decide on purpose: if the theme belongs to the device it survives the logout, and if it belongs to the user it is cleared at logout like any other user data.
+
+Each feature enters through the layer it belongs to. The only change outside that layer is the type that `NotificationsCubit` receives, and that happens because the feature really changes where the data comes from. None of the three forces me to touch widgets of another feature, which is the usual symptom of an architecture that does not absorb growth.
