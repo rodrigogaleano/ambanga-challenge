@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+coverage/
