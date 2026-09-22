@@ -346,6 +346,30 @@ I would decide per feature, not for the whole app. A feature should move to `Blo
 
 ### 3.2 - Centralised locator
 
+**Problems in a larger project**
+
+- **Nobody owns the file.** Every feature edits the same `locator.dart`, so pull requests from different teams conflict there all the time.
+- **Hidden dependencies and fragile order.** It is hard to see what one feature needs, and a registration that uses another one breaks if the order changes. The error only appears at runtime, often on a screen nobody opened during the review.
+- **No lifecycle and no scope.** Everything lives until the app is killed, so a singleton with user data survives the logout. This is the `OrganisationsCubit` from 1.3 and the root of the bug in 3.4.
+- **Tests need the whole app.** To test one feature, I have to register everything, and one test can leak state into the next one.
+- **Wrong registration types are easy to miss.** In a long file, a Cubit registered as a singleton instead of a factory is one word that nobody notices in review.
+
+**How I organise it**
+
+The demo app in this repository already follows what I propose:
+
+- One module per area. `demo/di/notifications_module.dart` registers only notifications, and `demo/di/locator.dart` only calls the modules. In a full app there would also be a network module and one module per feature (0.4).
+- Registration types chosen on purpose: the Cubit is a factory, the API is a lazy singleton, and `AppLifecycleObserver` is an app-wide singleton. `test/demo/locator_test.dart` checks these choices, so a wrong type breaks a test instead of leaking data.
+- GetIt appears only in the DI files and where the page creates its Cubit (0.1). Every other class receives its dependencies through the constructor, so it does not care how the locator is organised.
+
+**Session scope**
+
+Everything that belongs to the logged in user goes into a GetIt scope created at login and removed at logout (`pushNewScope` and `popScope`). Then the user's repositories and caches are disposed together, and nothing survives for the next user (see 3.4).
+
+**When the team grows**
+
+Each feature becomes a package that exports its own module, and the app only composes the modules (0.3). The module is then the public entry point of the feature, and the compiler checks what each package can see.
+
 ### 3.3 - Offline operations queue
 
 ### 3.4 - Previous user data bug
