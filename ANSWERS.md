@@ -222,7 +222,26 @@ The team can do this refactor in small steps without stopping other work: first 
 
 ### 1.4 - Architecture Boundary Breaks
 
-<!-- Point at least 2 concrete boundary breaks (file + symbol/block), expected dependency direction, and practical impact -->
+In 0.1 I wrote: "Dependencies go in one direction only: UI → Data. The Data layer never knows about Cubits, widgets or routes." The two breaks below break exactly this rule: in the first one, the Data layer knows a Cubit; in the second one, it knows routes.
+
+**Break 1: the Data layer writes into UI state**
+
+- *Where:* `organisation_service.dart`, class `OrganisationService`. It receives `OrganisationsCubit` in its constructor (field `_cubit`), and `getOrganisations`, `createOrganisation` and `deleteOrganisation` call `_cubit.setAll`, `_cubit.addOne` and `_cubit.removeById`.
+- *Now:* `OrganisationService` (Data) → `OrganisationsCubit` (UI).
+- *Should be:* `OrganisationsCubit` (UI) → `OrganisationRepository` (Data, abstract) ← `OrganisationRepositoryRemote`. The data goes back to the UI through return values or a `Stream`. The Data layer never calls the UI. The refactor is in 1.3.
+- *Practical consequence (testability and deployment):* I cannot test the Data layer without creating a Cubit. And because the service depends on a `Cubit` class, the Data layer depends on `flutter_bloc`, so it cannot become a pure Dart package, which is the next step I mention in 0.3.
+
+**Break 2: the network layer controls navigation**
+
+- *Where:* `http_error_interceptor.dart`, the block that registers the interceptors in `RemoteApiClient`. The `onError` callbacks call `locator<AuthService>().logout()`, `locator<AppRouter>().replace(LoginRoute())` and `locator<AppRouter>().push(ForbiddenRoute())`.
+- The class `HttpErrorInterceptor` itself is generic: it only receives a callback, so on its own it does not break anything. The break is in the registration, because it makes a Data layer component start the logout flow and navigate. It also hides these dependencies: the callbacks get `AuthService` and `AppRouter` from the global locator when they run, not through a constructor, which breaks my second rule in 0.1.
+- *Now:* `HttpErrorInterceptor` (Data) → `AppRouter` and routes (UI), and → `AuthService`.
+- *Should be:* `HttpErrorInterceptor` → `SessionRepository` (Data, received through the constructor), which only records that the session expired. The UI (a listener at the root of the app, or a router guard) listens to the session state and navigates. The fix is in 1.2.
+- *Practical consequence (team velocity and coupling):* every navigation change (renaming a route, changing the routing library, showing a "session expired" dialog instead of navigating) needs a change in the network code, which is often owned by another team. Also, the HTTP client cannot be used where there is no router, like a push notification handler or a background sync: there, `locator<AppRouter>()` fails or navigates at the wrong moment.
+
+**`user_list_viewmodel.dart`**
+
+I also checked this file, and I do not see a boundary break. `UserListCubit` (UI) depends on the `UserService` abstraction, so the direction is correct: UI → Data. This is the same situation as `NotificationsCubit` and `NotificationsApi` in 0.1, where the abstraction plays the role of the repository contract. The problems in this file (1.1) are about concurrency and state, not about boundaries.
 
 ---
 
